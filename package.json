@@ -1,0 +1,26 @@
+{
+  "name": "invoicepdfgen",
+  "version": "1.0.0",
+  "description": "Invoice generation using PDFKit",
+  "main": "invoiceData.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/oeufmeister/invoicepdfgen.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/oeufmeister/invoicepdfgen/issues"
+  },
+  "homepage": "https://github.com/oeufmeister/invoicepdfgen#readme",
+  "dependencies": {
+    "express": "^5.1.0",
+    "pdfkit": "^0.17.2"
+  }
+}
