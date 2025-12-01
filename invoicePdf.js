@@ -1,203 +1,167 @@
-// invoicePdf.js
-const fs = require("fs");
 const PDFDocument = require("pdfkit");
-const path = require("path");
+const fs = require("fs");
+const invoiceData = require("./invoiceData");
 
-function safe(v) {
-  return v === undefined || v === null ? "" : String(v);
-}
-
-function generateInvoicePdf(outputPath, data) {
+function generateInvoicePDF() {
   const doc = new PDFDocument({
     size: "A4",
-    layout: "landscape",
-    bufferPages: true,
-    margin: data.layout.margin,
+    layout: "portrait",
+    margins: { top: 40, left: 50, right: 50, bottom: 40 },
   });
 
-  doc.pipe(fs.createWriteStream(outputPath));
+  const stream = fs.createWriteStream("invoice-output.pdf");
+  doc.pipe(stream);
 
-  const pageW = doc.page.width;
-  const pageH = doc.page.height;
-  const margin = data.layout.margin;
+  const {
+    logoPath,
+    header,
+    project,
+    items,
+    totals,
+    payment,
+    layout,
+  } = invoiceData;
 
-  const leftX = data.layout.leftColumnX;
-  const rightX = data.layout.rightColumnX;
+  const { margin, headerY, leftColumnX, rightColumnX } = layout;
 
-  // -----------------------------
-  // HEADER (2-column layout)
-  // -----------------------------
-  function drawHeader() {
-    doc.font("Helvetica-Bold").fontSize(32);
-    doc.text(data.header.title, leftX, data.layout.headerY);
+  //
+  // ========== HEADER ==========
+  //
 
-    let y = data.layout.headerY + 50;
-    doc.fontSize(11).font("Helvetica-Bold");
-    doc.text("Att:", leftX, y, { continued: true });
-    doc.font("Helvetica").text(` ${safe(data.header.attentionName)}`);
+  // Title
+  doc.font("Helvetica-Bold").fontSize(20).text(header.title, margin, headerY);
+
+  let y = headerY + 30;
+
+  // LEFT COLUMN (attention + invoice meta)
+  doc.font("Helvetica-Bold").fontSize(11);
+  doc.text(`Att: ${header.attentionName}`, leftColumnX, y);
+  y += 15;
+  doc.font("Helvetica").fontSize(10);
+  doc.text(header.attentionEmail, leftColumnX, y);
+  y += 25;
+
+  doc.text(project.referenceNumber, leftColumnX, y);
+  y += 25;
+
+  // RIGHT COLUMN (company info)
+  let rightY = headerY + 30;
+  doc.font("Helvetica").fontSize(10);
+  header.companyInfoLines.forEach((line) => {
+    doc.text(line, rightColumnX - 100, rightY, { 
+      width: 200,
+      align: "right" });
+    rightY += 14;
+  });
+
+  let midColumnX = leftColumnX + 150
+  let midY = headerY + 30
+  // MID COLUMN meta
+  doc.font("Helvetica-Bold").text("Date", midColumnX, midY, { align: "left" });
+  midY += 13;
+  doc.font("Helvetica").text(header.date, midColumnX, midY, { align: "left" });
+
+  midY += 18;
+  doc.font("Helvetica-Bold").text("Invoice Number", midColumnX, midY, { align: "left" });
+  midY += 13;
+  doc.font("Helvetica").text(header.invoiceNumber, midColumnX, midY, { align: "left" });
+
+  midY += 18;
+  doc.font("Helvetica-Bold").text("Client Order No.", midColumnX, midY, { align: "left" });
+  midY += 13;
+  doc.font("Helvetica").text(header.clientOrderNumber, midColumnX, midY, { align: "left" });
+
+  //
+  // ========== PROJECT DESCRIPTION ==========
+  //
+  y = layout.projectY;
+  doc.font("Helvetica-Bold").fontSize(11).text(project.descriptionLines[0], margin, y);
+  y += 18;
+
+  doc.font("Helvetica").fontSize(10);
+  project.descriptionLines.slice(1).forEach((line) => {
+    doc.text(line, margin, y, { width: 500 });
+    y += 14;
+  });
+
+  //
+  // ========== TABLE HEADER ==========
+  //
+  y += 10;
+  doc.moveTo(margin, y).lineTo(550, y).stroke();
+  y += 8;
+
+  doc.font("Helvetica-Bold").fontSize(10);
+  doc.text("Description", margin, y);
+  doc.text("Quantity", 260, y);
+  doc.text("Rate", 340, y);
+  doc.text("Amount", 430, y);
+
+  y += 20;
+  doc.font("Helvetica").fontSize(10);
+
+  //
+  // ========== TABLE ROWS ==========
+  //
+  items.forEach((item) => {
+    doc.text(item.description, margin, y);
+    doc.text(item.qty.toString(), 260, y);
+    doc.text(`$${item.rate.toFixed(2)}`, 340, y);
+    doc.text(`$${item.amount.toFixed(2)}`, 430, y);
+    y += layout.rowHeight - 10;
+  });
+
+  //
+  // ========== TOTALS ==========
+  //
+  y += 10;
+  doc.font("Helvetica").fontSize(10);
+  doc.text("Sub Total", 340, y);
+  doc.text(`$${totals.subtotal.toFixed(2)}`, 430, y);
+
+  y += 15;
+  doc.text("GST", 340, y);
+  doc.text(`$${totals.gst.toFixed(2)}`, 430, y);
+
+  y += 18;
+  doc.font("Helvetica-Bold").fontSize(11);
+  doc.text("Total", 340, y);
+  doc.text(`$${totals.total.toFixed(2)}`, 430, y);
+
+  //
+  // ========== NEW: DOWN PAYMENT + BALANCE ==========
+  //
+  y += 30;
+  doc.font("Helvetica-Bold").fontSize(10);
+  doc.text("Down Payment", 50, y);
+  doc.font("Helvetica").text(`$${totals.downPayment.toFixed(2)}`, 150, y);
+
+  y += 20;
+  doc.font("Helvetica-Bold").text("Balance", 50, y);
+  doc.font("Helvetica").text(`$${totals.balance.toFixed(2)}`, 150, y);
+
+  //
+  // ========== DUE DATE ==========
+  //
+  y += 35;
+  doc.font("Helvetica-Bold").fontSize(11).text("Due Date:", 50, y);
+  doc.font("Helvetica").fontSize(10).text(payment.dueDate, 120, y);
+
+  //
+  // ========== PAYMENT FOOTER ==========
+  //
+  y += 40;
+  doc.font("Helvetica").fontSize(10);
+  payment.bankLines.forEach((line) => {
+    doc.text(line, 50, y);
     y += 15;
-    doc.text(safe(data.header.attentionEmail), leftX, y);
-    y += 25;
+  });
 
-    doc.font("Helvetica-Bold");
-    doc.text("Date:", leftX, y, { continued: true });
-    doc.font("Helvetica").text(" " + safe(data.header.date));
-    y += 15;
-
-    doc.font("Helvetica-Bold");
-    doc.text("Invoice Number:", leftX, y, { continued: true });
-    doc.font("Helvetica").text(" " + safe(data.header.invoiceNumber));
-    y += 15;
-
-    doc.font("Helvetica-Bold");
-    doc.text("Client Order No.:", leftX, y, { continued: true });
-    doc.font("Helvetica").text(" " + safe(data.header.clientOrderNumber));
-
-    // --- Right Column ---
-    let ry = data.layout.headerY + 20;
-    doc.font("Helvetica");
-    (data.header.companyInfoLines || []).forEach((line) => {
-      doc.text(line, rightX, ry, { align: "right", width: 300 });
-      ry += 15;
-    });
-
-    // Logo
-    if (data.logoPath && fs.existsSync(data.logoPath)) {
-      try {
-        doc.image(data.logoPath, pageW - margin - 120, data.layout.headerY, {
-          width: 110,
-        });
-      } catch {}
-    }
-  }
-
-  // -----------------------------
-  // PROJECT BLOCK
-  // -----------------------------
-  function drawProject() {
-    doc.font("Helvetica-Bold").fontSize(12);
-    doc.text(safe(data.project.referenceNumber), leftX, data.layout.projectY);
-
-    let y = data.layout.projectY + 25;
-    doc.font("Helvetica").fontSize(10);
-
-    (data.project.descriptionLines || []).forEach((line) => {
-      doc.text(line, leftX, y, { width: pageW - margin * 2 });
-      y += 13;
-    });
-  }
-
-  // -----------------------------
-  // TABLE (header + rows)
-  // -----------------------------
-  function drawTableHeader(y) {
-    doc.font("Helvetica-Bold").fontSize(12);
-    doc.text("Description", leftX, y);
-    doc.text("Quantity", leftX + 420, y);
-    doc.text("Rate", leftX + 520, y);
-    doc.text("Amount", leftX + 620, y);
-  }
-
-  function drawRow(item, y) {
-    const rowH = data.layout.rowHeight;
-
-    doc.rect(leftX, y, 700, rowH).stroke();
-
-    doc.font("Helvetica").fontSize(10);
-    doc.text(safe(item.description), leftX + 8, y + 12, { width: 390 });
-
-    doc.text(String(item.qty), leftX + 430, y + 12);
-    doc.text(String(item.rate), leftX + 530, y + 12);
-    doc.text(String(item.amount), leftX + 630, y + 12);
-
-    return y + rowH;
-  }
-
-  // -----------------------------
-  // TOTALS
-  // -----------------------------
-  function drawTotals(y) {
-    doc.font("Helvetica-Bold").fontSize(11);
-
-    const tx = leftX + 520;
-
-    doc.text("Sub Total:", tx, y, { continued: true });
-    doc.font("Helvetica").text(` $${data.totals.subtotal.toFixed(2)}`);
-    y += 15;
-
-    doc.font("Helvetica-Bold");
-    doc.text("GST:", tx, y, { continued: true });
-    doc.font("Helvetica").text(` $${data.totals.gst.toFixed(2)}`);
-    y += 15;
-
-    doc.font("Helvetica-Bold");
-    doc.text("Total:", tx, y, { continued: true });
-    doc.font("Helvetica").text(` $${data.totals.total.toFixed(2)}`);
-    y += 25;
-
-    doc.font("Helvetica-Bold");
-    doc.text("Down Payment 50%:", tx, y, { continued: true });
-    doc.font("Helvetica").text(` $${data.totals.downPayment.toFixed(2)}`);
-    y += 15;
-
-    doc.font("Helvetica-Bold");
-    doc.text("Balance:", tx, y, { continued: true });
-    doc.font("Helvetica").text(` $${data.totals.balance.toFixed(2)}`);
-
-    return y + 40;
-  }
-
-  // -----------------------------
-  // PAYMENT INFO
-  // -----------------------------
-  function drawPayment(y) {
-    doc.font("Helvetica-Bold").fontSize(12);
-    doc.text("Due Date: " + safe(data.payment.dueDate), leftX, y);
-    y += 20;
-
-    doc.font("Helvetica").fontSize(10);
-    (data.payment.bankLines || []).forEach((line) => {
-      doc.text(line, leftX, y);
-      y += 14;
-    });
-  }
-
-  // -----------------------------
-  // PAGE NUMBERS
-  // -----------------------------
-  function addPageNumbers() {
-    const range = doc.bufferedPageRange();
-    const total = range.count;
-
-    for (let i = 0; i < total; i++) {
-      doc.switchToPage(i);
-      const txt = data.header.pageTextTemplate
-        .replace("{{current}}", i + 1)
-        .replace("{{total}}", total);
-
-      doc.font("Helvetica").fontSize(10);
-      doc.text(txt, pageW - margin - 60, margin - 10);
-    }
-  }
-
-  // -----------------------------
-  // RENDER PAGE
-  // -----------------------------
-  drawHeader();
-  drawProject();
-  drawTableHeader(data.layout.tableTopY);
-
-  let y = data.layout.tableTopY + 25;
-  for (const item of data.items) {
-    y = drawRow(item, y);
-  }
-
-  y = drawTotals(y + 15);
-  drawPayment(y + 10);
-
-  addPageNumbers();
-
+  //
+  // FINISH
+  //
   doc.end();
+  console.log("Generated invoice-output.pdf");
 }
 
-module.exports = generateInvoicePdf;
+generateInvoicePDF();
